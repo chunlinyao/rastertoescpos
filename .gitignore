@@ -1,0 +1,8 @@
+*.swp
+*.o
+/bin
+/ppd
+/src/rastertotpcl
+/src/ppd
+*.raster
+*.tpcl
