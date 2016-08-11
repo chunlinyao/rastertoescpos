@@ -36,8 +36,6 @@
  *   OutputLine()   - Output a line of graphics.
  *   main()         - Main entry and processing of driver.
  *
- *   TOPIXCompress() - Compress output into TEC's TOPIX format.
- *   TOPIXCompressOutputBuffer() - Send current contents of TOPIX data to stdout.
  *
  * This driver should support all Toshiba TEC Label Printers with support for TPCL (TEC
  * Printer Command Language) and TOPIX Compression for graphics. 
@@ -75,11 +73,19 @@ static unsigned char  *CompBuffer;     /* Byte array of whole image */
 unsigned char         *CompBufferPtr;  /* Pointer to current position in CompBuffer */
 int   CompLastLine;   /* Last line number sent to TOPIX output */
 int   Page,           /* Current page */
-      Feed,           /* Number of lines to skip */
-      Canceled,		    /* Non-zero if job is canceled */
-      Gmode; 			    /* Tec Graphics mode */
+      Canceled;		    /* Non-zero if job is canceled */
 
 int		ModelNumber; 		/* cupsModelNumber attribute (not currently in use) */
+
+struct settings_
+{
+  int cashDrawer1;
+  int cashDrawer2;
+  int cutter;
+  int reducationPaper;
+};
+
+struct settings_ settings;
 
 /*
  * Prototypes...
@@ -90,20 +96,40 @@ void EndPage(ppd_file_t *ppd, cups_page_header2_t *header);
 void CancelJob(int sig);
 void OutputLine(ppd_file_t *ppd, cups_page_header2_t *header, int y);
 
-void TOPIXCompress(ppd_file_t *ppd, cups_page_header2_t *header, int y);
-void TOPIXCompressOutputBuffer(ppd_file_t *ppd, cups_page_header2_t *header, int y);
+
+inline int lo (int val)
+{
+  return val & 0xFF;
+}
+
+inline int hi (int val)
+{
+  return lo (val >> 8);
+}
+
+inline void initPrinter()
+{
+  printf("\x1b@");
+}
+
+inline void cutPaper()
+{
+  printf("\x1dV\x42");
+  putchar('\0');
+}
+
+inline void cashDrawer(int drawer)
+{
+  printf("\x1bp%d\x40\x50", drawer-1);
+  fflush(stdout);
+}
 
 /*
  * 'Setup()' - Prepare the printer for printing.
  */
 void Setup(ppd_file_t *ppd)			/* I - PPD file */
 {
-  char		*Fadjm;			/* Fine adjust printing position */
-  char		*Radj;			/* Ribbon adjust parameter */
   ppd_choice_t	*choice;		/* Marked choice */
-  /* initialize Fadjm */
-  Fadjm = (char *) malloc(INTSIZE +2); /* Advanced parameters for printer */
-  Radj  = (char *) malloc(INTSIZE +2); /* Ribbon ajust parameter */
 
   /*
    * Get the model number from the PPD file.
@@ -114,77 +140,30 @@ void Setup(ppd_file_t *ppd)			/* I - PPD file */
   /*
    * Always send a reset command. Helps with reliability on failed jobs.
    */
-  puts("{WS|}");
+  initPrinter();
 
-  /*  
-   * Modification to take in consideration feed ajust reverse feed etc
-   */
-  strcpy(Fadjm,"{AX;"); /* Place command start */
-  /* feed adjust */
-  choice = ppdFindMarkedChoice(ppd, "FAdjSgn");
-  switch (atoi(choice->choice))
-  {
-    case 0 :
-      strcat(Fadjm,"+");
-      break;
-    case 1 :
-      strcat(Fadjm,"-");
-      break;
-    default :
-      strcat(Fadjm,"+");
-      break;
-  }
-  choice = ppdFindMarkedChoice(ppd, "FAdjV");
-  strcat(Fadjm,choice->choice);
+  choice = ppdFindMarkedChoice(ppd, "escCutter");
+  settings.cutter = atoi(choice->choice);
+
+  choice = ppdFindMarkedChoice(ppd, "escReducationPaper");
+  settings.reducationPaper = atoi(choice->choice);
   
-  /* Cut adjust peel adjust */
-  choice = ppdFindMarkedChoice(ppd, "CAdjSgn");
-  switch (atoi(choice->choice))
-  {
-    case 0 :
-      strcat(Fadjm,",+");
-      break;
-    case 1 :
-      strcat(Fadjm,",-");
-      break;
-    default :
-      strcat(Fadjm,",+");
-      break;
-  }
-  choice = ppdFindMarkedChoice(ppd, "CAdjV");
-  strcat(Fadjm,choice->choice);
+  choice = ppdFindMarkedChoice(ppd, "escCashDrawer1");
+  settings.cashDrawer1 = atoi(choice->choice);
 
-  /* back feed adjust */
-  choice = ppdFindMarkedChoice(ppd, "RAdjSgn");
-  switch (atoi(choice->choice))
-  {
-    case 0 :
-      strcat(Fadjm,",+");
-      break;
-    case 1 :
-      strcat(Fadjm,",-");
-      break;
-    default :
-      strcat(Fadjm,",+");
-      break;
-  }
+  choice = ppdFindMarkedChoice(ppd, "escCashDrawer2");
+  settings.cashDrawer2 = atoi(choice->choice);
 
-  choice = ppdFindMarkedChoice(ppd, "RAdjV");
-  strcat(Fadjm,choice->choice);
   
-  /* close the command */
-  strcat(Fadjm,"|}");
-  /* send the command */
-  puts(Fadjm); /*send advanced parameters */
+  if (settings.cashDrawer1 == 1)
+  {
+    cashDrawer(1);
+  }
 
-  /* Send ribbon Motor setup parameters */
-  strcpy(Radj,"{RM;");	/* start command for ribbon */
-  choice = ppdFindMarkedChoice(ppd, "RbnAdjFwd");
-  strcat(Radj,choice->choice); /* value for take up motor */
-  choice = ppdFindMarkedChoice(ppd, "RbnAdjBck");
-  strcat(Radj,choice->choice);
-  strcat(Radj,"|}");
-  puts(Radj);
+  if (settings.cashDrawer2 == 1)
+  {
+    cashDrawer(2);
+  }
 
 }
 
@@ -196,18 +175,10 @@ void
 StartPage(ppd_file_t         *ppd,	/* I - PPD file */
           cups_page_header2_t *header)	/* I - Page header */
 {
-  ppd_choice_t  *choice;		/* Marked choice */
-  int           labelgap;		/* length of labelgap */
-  int           labelpitch; /* label pitch, distance from start of one label to the next */
-  int         	length;			/* Effective label length */
-  int 		      width;			/* Effective label width */
-  char		      *Fadjt;			/* Fine adjust temperature */
   
 #if defined(HAVE_SIGACTION) && !defined(HAVE_SIGSET)
   struct sigaction action;		/* Actions for POSIX signals */
 #endif /* HAVE_SIGACTION && !HAVE_SIGSET */
-
-  Fadjt = (char *) malloc(INTSIZE +2);
 
   /*
    * Show page device dictionary...
@@ -272,152 +243,7 @@ StartPage(ppd_file_t         *ppd,	/* I - PPD file */
   signal(SIGTERM, CancelJob);
 #endif /* HAVE_SIGSET */
 
-  // printf("{XJ;Page Start|}");
-  
-  /*
-   * First paper size Dxxxx,xxxx,xxxx
-   * 
-   *   100 == 10.0mm
-   */
-
-  /* Get labelgap for printing */
-  choice = ppdFindMarkedChoice(ppd, "Gap");
-  labelgap = atoi(choice->choice) * 10;
-
-  /* Calculate page widths and heights */
-  length = (int) (header->cupsPageSize[1] * 254/72);
-  labelpitch = length + labelgap;
-  width = (int) (header->cupsPageSize[0] * 254/72);
-
-  /* Send label size, assume gap is same all the way round */
-  // printf("{D%04d,%04d,%04d|}\n",labelpitch, width, length, width + labelgap); 
-  printf("{D%04d,%04d,%04d,%04d|}\n",labelpitch, width, length, width + labelgap); 
-
-  /*
-   * Place the right command in the parameter AY temperature fine adjust
-   * Uses number from PPD less 11.
-   */
-  switch (header->cupsCompression)
-  {
-    case 1 :
-      strcpy(Fadjt,"{AY;-10,");
-      break;
-    case 2 :
-      strcpy(Fadjt,"{AY;-09,");
-      break;
-    case 3 :
-      strcpy(Fadjt,"{AY;-08,");
-      break;
-    case 4 :
-      strcpy(Fadjt,"{AY;-07,");
-      break;
-    case 5 :
-      strcpy(Fadjt,"{AY;-06,");
-      break;
-    case 6 :
-      strcpy(Fadjt,"{AY;-05,");
-      break;
-    case 7 :
-      strcpy(Fadjt,"{AY;-04,");
-      break;
-    case 8 :
-      strcpy(Fadjt,"{AY;-03,");
-      break;
-    case 9 :
-      strcpy(Fadjt,"{AY;-02,");
-      break;
-    case 10 :
-      strcpy(Fadjt,"{AY;-01,");
-      break;
-    case 11 :
-      strcpy(Fadjt,"{AY;+00,");
-      break;
-    case 12 :
-      strcpy(Fadjt,"{AY;+01,");
-      break;
-    case 13 :
-      strcpy(Fadjt,"{AY;+02,");
-      break;
-    case 14 :
-      strcpy(Fadjt,"{AY;+03,");
-      break;
-    case 15 :
-      strcpy(Fadjt,"{AY;+04,");
-      break;
-    case 16 :
-      strcpy(Fadjt,"{AY;+05,");
-      break;
-    case 17 :
-      strcpy(Fadjt,"{AY;+06,");
-      break;
-    case 18 :
-      strcpy(Fadjt,"{AY;+07,");
-      break;
-    case 19 :
-      strcpy(Fadjt,"{AY;+08,");
-      break;
-    case 20 :
-      strcpy(Fadjt,"{AY;+09,");
-      break;
-    case 21 :
-      strcpy(Fadjt,"{AY;+10,");
-      break;
-  }
-  
-  /*
-   * Completing fine adjust according to Thermal or direct printing
-   */
-  if (strcmp(header->MediaType, "Direct") == 0)
-    strcat(Fadjt,"1|}");
-  else // Thermal transfer mode, with or without ribbon saving
-    strcat(Fadjt,"0|}");
-  
-  /*
-   * Send parameter to printer
-   */
-  puts(Fadjt);
-
-  //printf("{T|}\n");   /* Feed one sheet of paper */
-  printf("{C|}\n"); 	/* clear image buffer */
-
-  /* Get graphics mode from ppd file for graphics drawing */
-  choice = ppdFindMarkedChoice(ppd,"teGraphicsMode");
-  switch (atoi(choice->choice)) {
-    case 3:
-      Gmode = TEC_GMODE_HEX_OR; // OR drawing hex mode
-      break;
-    case 2:
-      Gmode = TEC_GMODE_HEX_AND; // AND drawing hex mode
-      break;
-    case 1:
-    default:
-      Gmode = TEC_GMODE_TOPIX;
-  }
-
-  // Only print the graphics if NOT in TOPIX mode!
-  if (Gmode != TEC_GMODE_TOPIX)
-  {
-    printf("{SG;0000,0000,%04d,%04d,%d,", header->cupsBytesPerLine * 8, header->cupsHeight, Gmode);
-  }
-  else
-  {
-    /*
-     * Allocate buffers for 8 dots per byte graphics ready for TOPIX compression
-     */
-    LastBuffer = malloc(header->cupsBytesPerLine);
-    memset(LastBuffer, 0, header->cupsBytesPerLine);
-    // Allocate big chunk of memory for parts of TOPIX image 
-    CompBuffer = malloc(0xFFFF);
-    memset(CompBuffer, 0, 0xFFFF);
-    CompBufferPtr = CompBuffer;
-    CompLastLine = 0;
-  }
-
-  /*
-   * Allocate memory for a line of graphics...
-   */
   Buffer = malloc(header->cupsBytesPerLine);
-  Feed   = 0;
 }
 
 
@@ -428,47 +254,10 @@ void
 EndPage(ppd_file_t *ppd,		/* I - PPD file */
         cups_page_header2_t *header)	/* I - Page header */
 {
-  int 		      Quant;	 		/* Quantity to print */
-  char		      *Temp;			/* Temporary string */
-  char		      *Dummy;			/* dummy chars workaround bev4t last tcp packet lost bug V1.1G*/
-  unsigned int 	Tmedia;			/* type of media */
-  char          *Tmode;			/* Print mode */
-  unsigned int  Tmirror;		/* Mirror print */
-  unsigned int  tstat;			/* with or without status */
-  unsigned int  detect;			/* type of label sensor*/
-  char  	      *Tspeed;		/* print Speed */
-  unsigned int  Tcut;			  /* Cut quantity */
-  unsigned int  CutActive;	/* Activate cutter */
-  ppd_choice_t  *choice;		/* Marked choice */
 
 #if defined(HAVE_SIGACTION) && !defined(HAVE_SIGSET)
   struct sigaction action;		/* Actions for POSIX signals */
 #endif /* HAVE_SIGACTION && !HAVE_SIGSET */
-
-  Temp = (char *) malloc(INTSIZE +2);
-  Dummy = (char *) malloc(600);
-  Tmode = (char *) malloc(INTSIZE +2);
-  Tspeed = (char *) malloc(INTSIZE +2);
-  detect = 0;
-  Quant = 1;
-  CutActive =0;
-
-  memset(Dummy, 0, 600);
-  /* Initialise printing defaults */
-	Tmedia =0;
-	Tmirror=0;
-	tstat =0;
-	strcpy(Tmode,"C\0");
-	strcpy(Tspeed,"3\0");
-
-  /*
-   * Terminate sending graphics.
-   * If not in TOPIX mode, we also need to close the raw graphics output.
-   */
-  if (Gmode == TEC_GMODE_TOPIX)
-    TOPIXCompressOutputBuffer(ppd, header, 0);
-  else
-    printf("|}\n");
 
 
   if (Canceled)
@@ -476,137 +265,15 @@ EndPage(ppd_file_t *ppd,		/* I - PPD file */
     /*
      * Ramclear in case of error
      */
-    puts("{WR|}");
+    initPrinter();
 
   } else {
-
-    /*
-     * Set media tracking...
-     */
-    if (ppdIsMarked(ppd, "teMediaTracking", "0"))
-      detect = 0;
-    else if (ppdIsMarked(ppd, "teMediaTracking", "1"))
-      detect = 1;
-    else if (ppdIsMarked(ppd, "teMediaTracking", "2"))
-      detect = 2;
-    else if (ppdIsMarked(ppd, "teMediaTracking", "3"))
-      detect= 3;
-    else if (ppdIsMarked(ppd, "teMediaTracking", "4"))
-      detect = 4;
-
-    //	printf("{XJ;End Page %d|}",detect);
-    /*
-     * Set print mode...
-     */
-    if (header->CutMedia) /* coupe active */
-    {	
-      strcpy(Tmode,"C\0");
-      CutActive =1;
-    }
-    else
+    if (settings.cutter == 2) // Cut per page
     {
-      if ((choice = ppdFindMarkedChoice(ppd, "tePrintMode")) != NULL &&
-        strcmp(choice->choice, "0"))
-      {
-        strcpy(Tmode,"C\0");
-        if (!strcmp(choice->choice,"1"))
-          strcpy(Tmode,"D\0");
-        else if (!strcmp(choice->choice, "2"))
-          strcpy(Tmode,"E\0");
-        else if (!strcmp(choice->choice, "3"))
-        {
-          strcpy(Tmode,"C\0");
-          CutActive =1;
-        }
-      }
+      cutPaper();
     }
-    /*
-     * Set print rate...
-     */
-    choice = ppdFindMarkedChoice(ppd, "tePrintRate");
-
-    /* The speed is selected from the printer parameter choice */
-    switch (atoi(choice->choice))
-    {
-      case 2 :
-        strcpy(Tspeed,"2\0");
-        break;
-      case 3 :
-        strcpy(Tspeed,"3\0");
-        break;
-      case 4 :
-        strcpy(Tspeed,"4\0");
-        break;
-      case 5 :
-        strcpy(Tspeed,"5\0");
-        break;
-      case 6 :
-        strcpy(Tspeed,"6\0");
-        break;
-      case 8 :
-        strcpy(Tspeed,"8\0");
-        break;
-      case 10 :
-        strcpy(Tspeed,"A\0");
-        break;
-    }
-    
-    /*
-     * Set with or without ribbon mode from media type 
-     */
-    if (!strcmp(header->MediaType, "Direct"))
-      Tmedia = 0;
-    else if (!strcmp(header->MediaType, "Thermal"))
-      Tmedia = 1;
-    else if (!strcmp(header->MediaType,"Thermal2"))
-      Tmedia = 2;
-   
-    /* status response */
-    tstat = 0;
-
-    /*
-     * Manage the cut option every label or end of batch print 
-     */
-    switch (header->cupsRowStep)
-    {
-      case 0 :
-        Tcut =0;
-        break;
-      case 1 :
-        Tcut =1;
-        break;
-      case 999 :
-        Tcut =0;
-        break;
-      default:
-        Tcut= 0;
-        break;
-    }
-
-    /*
-     * Version 1.2 Mirror option not managed local management
-     */ 
-    if ((choice = ppdFindMarkedChoice(ppd, "PrintOrient")) != NULL)
-      Tmirror = atoi(choice->choice);
-    else
-      Tmirror = 0;
-
-    /*
-     * End the label and eject...
-     */
-    // printf("{PV00;0010,%4d,0020,0020,A,00,B=----Hello Linux World From S.K.E----- |}\n",header->PageSize[1]*254/72 - 50);
-    // printf("{PC01;0010,%4d,05,05,O,00,B= Only Man gives names and value to things (P.Kong)|}\n",header->PageSize[1]*254/72 - 30);
-    printf("{XS;I,%04d,%03d%d%s%s%d%d%d|}\n",header->NumCopies,Tcut,detect,Tmode,Tspeed,Tmedia,Tmirror,tstat);
-    
-    /* Send eject command if cut active */
-    if (CutActive > 0)
-      printf("{IB|}\n");
 
   } // Not Cancelled
-
-  fflush(stdout);
-
-  write(1, Dummy, 600);
 
   /*
    * Unregister the signal handler...
@@ -628,10 +295,6 @@ EndPage(ppd_file_t *ppd,		/* I - PPD file */
   /*
    * Free memory...
    */
-  if (Gmode == TEC_GMODE_TOPIX) {
-    free(LastBuffer);
-    free(CompBuffer);
-  }
   free(Buffer);
 }
 
@@ -662,145 +325,17 @@ OutputLine(ppd_file_t           *ppd,	    /* I - PPD file */
            int                  y)	      /* I - Line number */
 {
 
-  if (Gmode == TEC_GMODE_TOPIX) {
-    TOPIXCompress(ppd, header, y);
-  } else {
+    int width = header->cupsWidth >> 3; 
     // Hex Output
+    printf("\x1dv0");
+    putchar('\0');
+    putchar(lo(width));
+    putchar(hi(width));
+    putchar(lo(1));
+    putchar(hi(1));
+    fflush(stdout); 
     fwrite(Buffer, 1, header->cupsBytesPerLine, stdout);
-  }
-
 }
-
-
-
-/*
- * 'TOPIXCompress()' - Apply TOPIX compression mechanism to current data in buffers
- */
-void
-TOPIXCompress(ppd_file_t         *ppd,	    /* I - PPD file */
-              cups_page_header2_t *header,	/* I - Page header */
-              int                y)         /* Line number */
-{
-  int               i;              /* Index into Buffer */
-  int               max;            /* Max number of items per line */
-  unsigned char     line[8][9][9] = {0};  /* Current line */
-  int               l1, l2, l3;     /* Current Positions in line */ 
-  unsigned char     cl1, cl2, cl3;  /* Current Characters */
-
-  int               width;          /* Max width of the line */
-  unsigned char     xor;      /* Current XORed character */
-  unsigned char     *ptr;     /* Pointer into the Compressed Line Buffer */
- 
-
-  width = header->cupsBytesPerLine;
-  max = 8 * 9 * 9;
-
-  /*
-   * Ensure that we will not overrun the buffer by sending 
-   * to stdout when we get to the danger zone (width + ((width / 8) * 3))
-   * This will create multiple graphics objects depending on the size of the image.
-   */
-  if ((CompBufferPtr - CompBuffer) > (0xFFFF - (width + (ceil(width / 8) * 3)))) {
-    TOPIXCompressOutputBuffer(ppd, header, y);
-    memset(LastBuffer, 0, header->cupsBytesPerLine);
-  }
-
-  /*
-   * Perform XOR on raw data for TOPIX data
-   */
-  cl1 = 0;
-  i = 0;
-  for (l1 = 0; l1 <= 7 && i < width; l1++)
-  {
-    cl2 = 0;
-    for (l2 = 1; l2 <= 8 && i < width; l2++)
-    {
-      cl3 = 0;
-      for (l3 = 1; l3 <= 8 && i < width; l3++, i++)
-      {
-        xor = Buffer[i] ^ LastBuffer[i];
-        line[l1][l2][l3] = xor;
-        if (xor > 0) {
-          // There is a change! Ensure its recorded
-          cl3 |= (1 << (8 - l3));
-        }
-      } // L3
-
-      line[l1][l2][0] = cl3;
-      if (cl3 != 0)
-        cl2 |= (1 << (8 - l2));
-    } // L2
-
-    line[l1][0][0] = cl2;
-    if (cl2 != 0)
-      cl1 |= (1 << (7 - l1));
-  } // L1
-
-
-  // Always add CL1 for line
-  *CompBufferPtr = cl1;
-  CompBufferPtr++;
-
-  /*
-   * Copy the line into the compressed buffer with all the
-   * white space removed.
-   */
-  if (cl1 > 0) {
-    ptr = &line[0][0][0];
-    for(i = 0; i < max; i++) {
-      if (*ptr != 0) {
-        *CompBufferPtr = *ptr;
-        CompBufferPtr++;
-      }
-      ptr++;
-    }
-  }
-  
-  /*
-   * Copy line into last buffer ready for next loop
-   */
-  memcpy(LastBuffer, Buffer, header->cupsBytesPerLine);
-}
-
-/*
- * 'TOPIXCompressOutputBuffer()' - Send a set of data to output.
- *
- * Set y to 0 if this is the last line.
- */
-void TOPIXCompressOutputBuffer(ppd_file_t          *ppd,	   /* PPD file */
-                               cups_page_header2_t *header,	 /* Page header */
-                               int                 y)        /* Line number */
-{
-  unsigned short len;
-  unsigned short belen; /* Big-endian short! */
-
-  len = (unsigned short) (CompBufferPtr - CompBuffer);
-  if (len == 0)
-    return;
-
-  fprintf(stderr, "DEBUG: Sending output with length: %04x \n", len);
-
-  // Convert into Big Endian (This may be OS dependant!)
-  belen = (len << 8 | len >> 8);
-
-  /*
-   * Output the complete graphics line to STDOUT
-   */
-  printf("{SG;0000,%04d,%04d,%04d,%d,", CompLastLine, header->cupsBytesPerLine * 8, 300, Gmode);
-  fwrite(&belen, 2, 1, stdout);       // Length of data
-  fwrite(CompBuffer, 1, len, stdout); // Data
-  printf("|}\n");
-  fflush(stdout);
-
-  if (y) CompLastLine = y;
-
-  /*
-   * Reset the Compressed Buffer
-   */
-  memset(CompBuffer, 0, 0xFFFF);
-  CompBufferPtr = CompBuffer;
-}
-
 
 
 /*
@@ -925,6 +460,22 @@ main(int  argc,				/* I - Number of command-line arguments */
     EndPage(ppd, &header);
     if (Canceled)
       break;
+  }
+
+  //End Job
+  if (settings.cutter == 1)
+  {
+    cutPaper();
+  }
+
+  if (settings.cashDrawer1 == 2)
+  {
+    cashDrawer(1);
+  }
+
+  if (settings.cashDrawer2 == 2)
+  {
+    cashDrawer(2);
   }
 
   /*
