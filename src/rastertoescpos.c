@@ -57,14 +57,6 @@
 #define INTSIZE		20 			/* MAXIMUM CHARACTERS INTEGER */
 
 /*
- * TEC Graphics Modes
- */
-#define TEC_GMODE_TOPIX   3
-#define TEC_GMODE_HEX_AND 1
-#define TEC_GMODE_HEX_OR  5
-
-
-/*
  * Globals...
  */
 static unsigned char	*Buffer;		     /* Output buffer */
@@ -76,6 +68,7 @@ int   Page,           /* Current page */
       Canceled;		    /* Non-zero if job is canceled */
 
 int		ModelNumber; 		/* cupsModelNumber attribute (not currently in use) */
+
 
 struct settings_
 {
@@ -242,8 +235,7 @@ StartPage(ppd_file_t         *ppd,	/* I - PPD file */
 #else
   signal(SIGTERM, CancelJob);
 #endif /* HAVE_SIGSET */
-
-  Buffer = malloc(header->cupsBytesPerLine);
+  Buffer = malloc(header->cupsBytesPerLine*24);
 }
 
 
@@ -325,16 +317,16 @@ OutputLine(ppd_file_t           *ppd,	    /* I - PPD file */
            int                  y)	      /* I - Line number */
 {
 
-    int width = header->cupsWidth >> 3; 
+    int width = header->cupsBytesPerLine; 
     // Hex Output
     printf("\x1dv0");
     putchar('\0');
     putchar(lo(width));
     putchar(hi(width));
-    putchar(lo(1));
-    putchar(hi(1));
+    putchar(lo(24));
+    putchar(hi(24));
     fflush(stdout); 
-    fwrite(Buffer, 1, header->cupsBytesPerLine, stdout);
+    fwrite(Buffer, 1, header->cupsBytesPerLine*24, stdout);
 }
 
 
@@ -433,20 +425,26 @@ main(int  argc,				/* I - Number of command-line arguments */
     /*
      * Loop for each line on the page...
      */
-    for (y = 0; y < header.cupsHeight && !Canceled; y++)
+    
+    for (y = 0; y < header.cupsHeight && !Canceled; y+=24)
     {
+      memset(Buffer, 0, sizeof(Buffer));
       /*
        * Let the user know how far we have progressed...
        */
-      if ((y & 15) == 0)
-        fprintf(stderr, "INFO: Printing page %d, %d%% complete...\n", Page,
+      fprintf(stderr, "INFO: Printing page %d, %d%% complete...\n", Page,
 	        100 * y / header.cupsHeight);
 
+      int rest = header.cupsHeight - y;
+      if (rest > 24)
+      {
+        rest = 24;
+      }
       /*
-       * Read a line of graphics...
+       * Read 24 lines of graphics...
        */
-      if (cupsRasterReadPixels(ras, Buffer, header.cupsBytesPerLine) < 1)
-        break;
+      if (cupsRasterReadPixels(ras, Buffer, header.cupsBytesPerLine*24) < 1) 
+           break;
 
       /*
        * Write it to the printer...

@@ -54,7 +54,7 @@ Font *
 Filter application/vnd.cups-raster 50 rastertoescpos
 
 // Media Sizes common to all the printers
-HWMargins 12 12 12 12 
+HWMargins 0 0 0 0 
 MediaSize w90h18
 MediaSize w90h162
 MediaSize w108h18
