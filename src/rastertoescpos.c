@@ -473,7 +473,9 @@ main(int  argc,				/* I - Number of command-line arguments */
       /*
        * Read 24 lines of graphics...
        */
-      
+      int rest = header.cupsHeight - y;
+      if(rest > 24) rest = 24; 
+      int readSize = header.cupsBytesPerLine*rest;
       if (cupsRasterReadPixels(ras, Buffer, readSize) < 1) 
            break;
       if (blankBuffer(readSize))

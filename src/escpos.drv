@@ -132,7 +132,9 @@ Group "AdvancedSetting/Advanced Printer Settings"
     VariablePaperSize Yes
     MinSize 63 29
     MaxSize 226 842
-    *Resolution k 1 0 0 0 "203dpi/GP80160"
+    Resolution k 1 0 0 0 "200dpi/200DPI"
+    Resolution k 1 0 0 0 "203dpi/203DPI"
+    *Resolution k 1 0 0 0 "203.2dpi/203.2DPI"
 
   }
 
