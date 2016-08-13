@@ -120,6 +120,18 @@ inline void setLineHeight(int h)
   char* cmd = (char[3]) {0x1b, 0x33, h};
   fwrite(cmd, 1, 3, stdout);
 }
+void skipLines(int l)
+{
+  for(;l>0;--l) putchar(10);
+}
+int blankBuffer(int count)
+{
+   int i;
+   for(i = 0; i< count; i++)
+      if (Buffer[i] != 0)
+          break;
+   return i >= count;
+}
 /*
  * 'Setup()' - Prepare the printer for printing.
  */
@@ -443,11 +455,12 @@ main(int  argc,				/* I - Number of command-line arguments */
      * Start the page...
      */
     StartPage(ppd, &header);
-
+    int page_started = 0;
     /*
      * Loop for each line on the page...
      */
-    
+    int zeroRows = 0; 
+    int readSize = header.cupsBytesPerLine*24;
     for (y = 0; y < header.cupsHeight && !Canceled; y+=24)
     {
       memset(Buffer, 0, sizeof(Buffer));
@@ -457,22 +470,40 @@ main(int  argc,				/* I - Number of command-line arguments */
       fprintf(stderr, "INFO: Printing page %d, %d%% complete...\n", Page,
 	        100 * y / header.cupsHeight);
 
-      int rest = header.cupsHeight - y;
-      if (rest > 24)
-      {
-        rest = 24;
-      }
       /*
        * Read 24 lines of graphics...
        */
-      if (cupsRasterReadPixels(ras, Buffer, header.cupsBytesPerLine*24) < 1) 
+      
+      if (cupsRasterReadPixels(ras, Buffer, readSize) < 1) 
            break;
+      if (blankBuffer(readSize))
+      {
+         ++ zeroRows;      
+         fprintf(stderr, "DEBUG: found %d zero rows\n", zeroRows);
+         continue;
+      }
 
+      // reducation top margin
+      if (page_started == 0) {
+         if (settings.reducationPaper == 1 || settings.reducationPaper == 3) {
+            fprintf(stderr, "DEBUG: reduction top margin %d rows\n", zeroRows);
+            zeroRows = 0;
+         }
+         page_started = 1;
+      }
+      skipLines(zeroRows);
+      zeroRows = 0;
       /*
        * Write it to the printer...
        */
       OutputSlice(ppd, &header, y);
     }
+    if (settings.reducationPaper == 2 || settings.reducationPaper == 3) {
+       fprintf(stderr, "DEBUG: reduction bottom margin %d rows\n", zeroRows);
+       zeroRows = 0;
+    }
+    skipLines(zeroRows);
+    zeroRows = 0;
 
     /*
      * Eject the page...
