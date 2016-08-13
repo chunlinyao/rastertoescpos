@@ -33,7 +33,7 @@
  *   StartPage()    - Start a page of graphics.
  *   EndPage()      - Finish a page of graphics.
  *   CancelJob()    - Cancel the current job...
- *   OutputLine()   - Output a line of graphics.
+ *   OutputSlice()   - Output a slice of graphics.
  *   main()         - Main entry and processing of driver.
  *
  *
@@ -60,10 +60,7 @@
  * Globals...
  */
 static unsigned char	*Buffer;		     /* Output buffer */
-static unsigned char	*LastBuffer;		 /* Last buffer */
-static unsigned char  *CompBuffer;     /* Byte array of whole image */
-unsigned char         *CompBufferPtr;  /* Pointer to current position in CompBuffer */
-int   CompLastLine;   /* Last line number sent to TOPIX output */
+static unsigned char  *CompBuffer;     /* Byte array for transpose */
 int   Page,           /* Current page */
       Canceled;		    /* Non-zero if job is canceled */
 
@@ -87,7 +84,7 @@ void Setup(ppd_file_t *ppd);
 void StartPage(ppd_file_t *ppd, cups_page_header2_t *header);
 void EndPage(ppd_file_t *ppd, cups_page_header2_t *header);
 void CancelJob(int sig);
-void OutputLine(ppd_file_t *ppd, cups_page_header2_t *header, int y);
+void OutputSlice(ppd_file_t *ppd, cups_page_header2_t *header, int y);
 
 
 inline int lo (int val)
@@ -117,6 +114,12 @@ inline void cashDrawer(int drawer)
   fflush(stdout);
 }
 
+inline void setLineHeight(int h)
+{
+  //Set line height to 24dot 
+  char* cmd = (char[3]) {0x1b, 0x33, h};
+  fwrite(cmd, 1, 3, stdout);
+}
 /*
  * 'Setup()' - Prepare the printer for printing.
  */
@@ -157,7 +160,7 @@ void Setup(ppd_file_t *ppd)			/* I - PPD file */
   {
     cashDrawer(2);
   }
-
+  setLineHeight(24);
 }
 
 
@@ -236,6 +239,7 @@ StartPage(ppd_file_t         *ppd,	/* I - PPD file */
   signal(SIGTERM, CancelJob);
 #endif /* HAVE_SIGSET */
   Buffer = malloc(header->cupsBytesPerLine*24);
+  CompBuffer = malloc(header->cupsWidth*3);
 }
 
 
@@ -251,6 +255,10 @@ EndPage(ppd_file_t *ppd,		/* I - PPD file */
   struct sigaction action;		/* Actions for POSIX signals */
 #endif /* HAVE_SIGACTION && !HAVE_SIGSET */
 
+  free(Buffer);
+  Buffer = NULL;
+  free(CompBuffer);
+  CompBuffer = NULL;
 
   if (Canceled)
   {
@@ -306,27 +314,41 @@ CancelJob(int sig)			/* I - Signal */
 
 
 /*
- * 'OutputLine()' - Output a line of graphics.
+ * 'OutputSlice()' - Output a line of graphics.
  * 
  * Some versions of this method check to see if the Buffer has data, this doesn't.
  * Empty lines can often be skipped if the buffer is checked.
  */
 void
-OutputLine(ppd_file_t           *ppd,	    /* I - PPD file */
+OutputSlice(ppd_file_t           *ppd,	    /* I - PPD file */
            cups_page_header2_t  *header,	/* I - Page header */
            int                  y)	      /* I - Line number */
 {
-
-    int width = header->cupsBytesPerLine; 
+    int width = header->cupsWidth; 
+    int bytesPerLine = header->cupsBytesPerLine;
     // Hex Output
-    printf("\x1dv0");
-    putchar('\0');
-    putchar(lo(width));
-    putchar(hi(width));
-    putchar(lo(24));
-    putchar(hi(24));
-    fflush(stdout); 
-    fwrite(Buffer, 1, header->cupsBytesPerLine*24, stdout);
+    char* cmd = (char[5]) {0x1b, 0x2a, 33, lo(width), hi(width)};
+    fwrite(cmd, 1, 5, stdout); 
+
+    memset(CompBuffer, 0, sizeof(CompBuffer));    
+
+    int x,k,b,i,j;
+    for (x=0; x < width; x++)
+    {
+       for (k=0; k< 3; k++)
+       {
+          unsigned char slice = 0;
+          unsigned char mask = 1 << (7 - x % 8);
+          i = (k * 8 * bytesPerLine ) + (x / 8);
+          for (b=0; b<8; b++) 
+          {
+             if (Buffer[i+bytesPerLine*b] & mask )  slice |= 1<<(7-b);
+          }
+          CompBuffer[x*3+k] = slice;
+       }
+    }
+    fwrite(CompBuffer, 1, width*3, stdout);
+    putchar(10); //Line feed
 }
 
 
@@ -449,7 +471,7 @@ main(int  argc,				/* I - Number of command-line arguments */
       /*
        * Write it to the printer...
        */
-      OutputLine(ppd, &header, y);
+      OutputSlice(ppd, &header, y);
     }
 
     /*
@@ -476,6 +498,8 @@ main(int  argc,				/* I - Number of command-line arguments */
     cashDrawer(2);
   }
 
+  //Set line height to 30dot 
+  setLineHeight(30);
   /*
    * Close the raster stream...
    */
