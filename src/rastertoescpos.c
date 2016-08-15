@@ -73,6 +73,7 @@ struct settings_
   int cashDrawer2;
   int cutter;
   int reducationPaper;
+  int density;
 };
 
 struct settings_ settings;
@@ -162,7 +163,13 @@ void Setup(ppd_file_t *ppd)			/* I - PPD file */
   choice = ppdFindMarkedChoice(ppd, "escCashDrawer2");
   settings.cashDrawer2 = atoi(choice->choice);
 
+  choice = ppdFindMarkedChoice(ppd, "escDensity");
+  settings.density = atoi(choice->choice);
   
+  choice = ppdFindMarkedChoice(ppd, "escDirection");
+  char* cmd = (char[3]) {0x1b, 0x55, atoi(choice->choice)};
+  fwrite(cmd, 1, 3, stdout); 
+
   if (settings.cashDrawer1 == 1)
   {
     cashDrawer(1);
@@ -303,11 +310,6 @@ EndPage(ppd_file_t *ppd,		/* I - PPD file */
 #else
   signal(SIGTERM, SIG_IGN);
 #endif /* HAVE_SIGSET */
-
-  /*
-   * Free memory...
-   */
-  free(Buffer);
 }
 
 
@@ -339,10 +341,10 @@ OutputSlice(ppd_file_t           *ppd,	    /* I - PPD file */
     int width = header->cupsWidth; 
     int bytesPerLine = header->cupsBytesPerLine;
     // Hex Output
-    char* cmd = (char[5]) {0x1b, 0x2a, 33, lo(width), hi(width)};
+    char* cmd = (char[5]) {0x1b, 0x2a, settings.density, lo(width), hi(width)};
     fwrite(cmd, 1, 5, stdout); 
 
-    memset(CompBuffer, 0, sizeof(CompBuffer));    
+    memset(CompBuffer, 0, width*3);    
 
     int x,k,b,i,j;
     for (x=0; x < width; x++)
@@ -460,10 +462,9 @@ main(int  argc,				/* I - Number of command-line arguments */
      * Loop for each line on the page...
      */
     int zeroRows = 0; 
-    int readSize = header.cupsBytesPerLine*24;
-    for (y = 0; y < header.cupsHeight && !Canceled; y+=24)
+    for (y = 0; y < header.cupsHeight && !Canceled;y+=24)
     {
-      memset(Buffer, 0, sizeof(Buffer));
+      memset(Buffer, 0, header.cupsBytesPerLine*24);
       /*
        * Let the user know how far we have progressed...
        */

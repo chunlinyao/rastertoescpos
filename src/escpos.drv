@@ -104,6 +104,14 @@ Group "General/General"
     Choice "1/Top Margin" ""
     Choice "2/Bottom Margin" ""
     *Choice "3/Top and Bottom Margin" ""
+  Option "escDirection/Print Direction" PickOne AnySetup 15
+    *Choice "0/Bidirection" ""
+    Choice "1/Unidirection" ""
+
+  Option "escDensity/Print Density" PickOne AnySetup 20
+    *Choice "33/Double(120dpi on dot matrix printer)" "" 
+    Choice "39/Triple(180dpi on dot matrix printer)" ""
+    Choice "40/Six(360dpi on dot matrix printer)" ""
 
 Group "PrinterSettings/Printer Settings"
   Option "escCutter/Cutter Option" PickOne AnySetup 10
@@ -132,9 +140,15 @@ Group "AdvancedSetting/Advanced Printer Settings"
     VariablePaperSize Yes
     MinSize 63 29
     MaxSize 226 842
-    Resolution k 1 0 0 0 "200dpi/200DPI"
-    Resolution k 1 0 0 0 "203dpi/203DPI"
-    *Resolution k 1 0 0 0 "203.2dpi/203.2DPI"
+    Resolution k 1 0 0 0 "90x180dpi/90x180 DPI"
+    Resolution k 1 0 0 0 "120x180dpi/120x180 DPI"
+    Resolution k 1 0 0 0 "180dpi/180 DPI"
+    Resolution k 1 0 0 0 "200dpi/200 DPI"
+    Resolution k 1 0 0 0 "203dpi/203 DPI"
+    *Resolution k 1 0 0 0 "203.2dpi/203.2 DPI"
+    Resolution k 1 0 0 0 "240dpi/240 DPI"
+    Resolution k 1 0 0 0 "360x180dpi/360x180 DPI"
+    Resolution k 1 0 0 0 "360dpi/360 DPI"
 
   }
 
