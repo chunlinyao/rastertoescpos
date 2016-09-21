@@ -112,6 +112,9 @@ Group "General/General"
     *Choice "33/Double(120dpi on dot matrix printer)" "" 
     Choice "39/Triple(180dpi on dot matrix printer)" ""
     Choice "40/Six(360dpi on dot matrix printer)" ""
+  Option "CenterOfPixel/Center Of Pixel" PickOne AnySetup 30
+    *Choice "true/true" ""
+    Choice "false/false" ""
 
 Group "PrinterSettings/Printer Settings"
   Option "escCutter/Cutter Option" PickOne AnySetup 10
