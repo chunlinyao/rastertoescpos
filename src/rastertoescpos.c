@@ -43,6 +43,7 @@
  */
 
 #include <cups/cups.h>
+#include <cups/ppd.h>
 #include <cups/raster.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -88,34 +89,34 @@ void CancelJob(int sig);
 void OutputSlice(ppd_file_t *ppd, cups_page_header2_t *header, int y);
 
 
-inline int lo (int val)
+static inline int lo (int val)
 {
   return val & 0xFF;
 }
 
-inline int hi (int val)
+static inline int hi (int val)
 {
   return lo (val >> 8);
 }
 
-inline void initPrinter()
+static inline void initPrinter()
 {
   printf("\x1b@");
 }
 
-inline void cutPaper()
+static inline void cutPaper()
 {
   printf("\x1dV\x42");
   putchar('\0');
 }
 
-inline void cashDrawer(int drawer)
+static inline void cashDrawer(int drawer)
 {
   printf("\x1bp%d\x40\x50", drawer-1);
   fflush(stdout);
 }
 
-inline void setLineHeight(int h)
+static inline void setLineHeight(int h)
 {
   //Set line height to 24dot 
   char* cmd = (char[3]) {0x1b, 0x33, h};
