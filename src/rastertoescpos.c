@@ -72,7 +72,7 @@ struct settings_
   int cashDrawer1;
   int cashDrawer2;
   int cutter;
-  int reducationPaper;
+  int reducePaperUsage;
   int density;
 };
 
@@ -154,8 +154,8 @@ void Setup(ppd_file_t *ppd)			/* I - PPD file */
   choice = ppdFindMarkedChoice(ppd, "escCutter");
   settings.cutter = atoi(choice->choice);
 
-  choice = ppdFindMarkedChoice(ppd, "escReducationPaper");
-  settings.reducationPaper = atoi(choice->choice);
+  choice = ppdFindMarkedChoice(ppd, "escReducePaperUsage");
+  settings.reducePaperUsage = atoi(choice->choice);
   
   choice = ppdFindMarkedChoice(ppd, "escCashDrawer1");
   settings.cashDrawer1 = atoi(choice->choice);
@@ -488,7 +488,7 @@ main(int  argc,				/* I - Number of command-line arguments */
 
       // reducation top margin
       if (page_started == 0) {
-         if (settings.reducationPaper == 1 || settings.reducationPaper == 3) {
+         if (settings.reducePaperUsage == 1 || settings.reducePaperUsage == 3) {
             fprintf(stderr, "DEBUG: reduction top margin %d rows\n", zeroRows);
             zeroRows = 0;
          }
@@ -501,7 +501,7 @@ main(int  argc,				/* I - Number of command-line arguments */
        */
       OutputSlice(ppd, &header, y);
     }
-    if (settings.reducationPaper == 2 || settings.reducationPaper == 3) {
+    if (settings.reducePaperUsage == 2 || settings.reducePaperUsage == 3) {
        fprintf(stderr, "DEBUG: reduction bottom margin %d rows\n", zeroRows);
        zeroRows = 0;
     }

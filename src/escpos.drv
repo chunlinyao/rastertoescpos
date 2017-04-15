@@ -99,7 +99,7 @@ MediaSize w284h425
 
 
 Group "General/General"
-  Option "escReducationPaper/Reducation Paper" PickOne AnySetup 10
+  Option "escReducePaperUsage/Reduce Paper Usage" PickOne AnySetup 10
     Choice "0/None" ""
     Choice "1/Top Margin" ""
     Choice "2/Bottom Margin" ""
