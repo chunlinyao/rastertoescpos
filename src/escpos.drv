@@ -94,6 +94,7 @@ MediaSize w288h432
 MediaSize w288h468
 MediaSize w288h936
 MediaSize w284h425 
+MediaSize w162h842
 *MediaSize w226h842
 
 
@@ -143,6 +144,29 @@ Group "AdvancedSetting/Advanced Printer Settings"
     VariablePaperSize Yes
     MinSize 63 29
     MaxSize 226 842
+    Resolution k 1 0 0 0 "90x180dpi/90x180 DPI"
+    Resolution k 1 0 0 0 "120x180dpi/120x180 DPI"
+    Resolution k 1 0 0 0 "180dpi/180 DPI"
+    Resolution k 1 0 0 0 "200dpi/200 DPI"
+    Resolution k 1 0 0 0 "203dpi/203 DPI"
+    *Resolution k 1 0 0 0 "203.2dpi/203.2 DPI"
+    Resolution k 1 0 0 0 "240dpi/240 DPI"
+    Resolution k 1 0 0 0 "360x180dpi/360x180 DPI"
+    Resolution k 1 0 0 0 "360dpi/360 DPI"
+
+  }
+
+}
+
+{
+
+  // printer GPrinter 80160
+  {
+    ModelName "GP-58130IVC"
+    PCFileName "gp58130.ppd"
+    VariablePaperSize Yes
+    MinSize 63 29
+    MaxSize 162 842
     Resolution k 1 0 0 0 "90x180dpi/90x180 DPI"
     Resolution k 1 0 0 0 "120x180dpi/120x180 DPI"
     Resolution k 1 0 0 0 "180dpi/180 DPI"
